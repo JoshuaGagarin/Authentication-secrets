@@ -8,6 +8,8 @@ const app = express()
 const session = require('express-session')
 const passport = require("passport")
 const passportLocalMongoose = require("passport-local-mongoose")
+const FacebookStrategy = require("passport-facebook").Strategy
+const findOrCreate = require("mongoose-findorcreate");
 
 app.use(express.static("public"))
 app.set("view engine", "ejs")
@@ -25,16 +27,32 @@ mongoose.connect("mongodb+srv://JoshuaGagarin:ELePysEI2dOXkIvt@cluster0.o1ytiec.
 
 const userSchema = new mongoose.Schema ({
   email: String,
-  password: String
+  password: String,
+  facebookId: String
 })
 
 userSchema.plugin(passportLocalMongoose)
-
+userSchema.plugin(findOrCreate)
 const User = new mongoose.model("User", userSchema)
 
-passport.use(User.createStrategy())
-passport.serializeUser(User.serializeUser())
-passport.deserializeUser(User.deserializeUser())
+passport.serializeUser(function(user, done) {
+  done(null, user);
+});
+passport.deserializeUser(function(user, done) {
+  done(null, user);
+});
+
+passport.use(new FacebookStrategy({
+    clientID: process.env.FACEBOOK_APP_ID,
+    clientSecret: process.env.FACEBOOK_APP_SECRET,
+    callbackURL: "http://localhost:3000/auth/facebook/callback",
+  },
+  function(accessToken, refreshToken, profile, cb) {
+    User.findOrCreate({ facebookId: profile.id }, function (err, user) {
+      return cb(err, user);
+    });
+  }
+));
 
 app.get("/", function(req, res){
   res.render("home")
@@ -56,6 +74,14 @@ if (req.isAuthenticated()){
 }
 })
 
+app.get("/submit", function(req, res){
+  if (req.isAuthenticated()){
+    res.render("submit")
+  } else {
+    res.redirect("/login")
+  }
+})
+
 app.get("/logout", function(req, res){
   req.logout(function(err) {
      if (!err) {
@@ -64,6 +90,14 @@ app.get("/logout", function(req, res){
 })
 })
 
+app.get('/auth/facebook',
+  passport.authenticate('facebook'));
+
+app.get('/auth/facebook/callback',
+  passport.authenticate('facebook', { failureRedirect: '/login' }),
+  function(req, res) {
+    res.redirect('/secrets');
+  });
 
 app.post("/register", function(req, res){
 User.register({username: req.body.username}, req.body.password, function(err,user){
